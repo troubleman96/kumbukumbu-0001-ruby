@@ -1,0 +1,60 @@
+#!/usr/bin/env ruby
+require "optparse"
+require_relative "../lib/rme"
+
+options = { type: "fact", importance: 5, tags: [], limit: 5 }
+command = ARGV.shift
+
+case command
+when "remember"
+  parser = OptionParser.new do |opts|
+    opts.on("--type TYPE", "fact, preference, goal, project, or note") { |v| options[:type] = v }
+    opts.on("--importance N", Integer, "Importance from 1 to 10") { |v| options[:importance] = v }
+    opts.on("--tags TAGS", "Comma-separated tags") { |v| options[:tags] = v.split(",").map(&:strip) }
+  end
+  parser.parse!(ARGV)
+  content = ARGV.join(" ")
+  memory = RME::Engine.new.remember(content, **options)
+  puts "Saved memory ##{memory.id} (#{memory.memory_type}, importance #{memory.importance})."
+when "recall"
+  OptionParser.new { |opts| opts.on("--limit N", Integer) { |v| options[:limit] = v } }.parse!(ARGV)
+  query = ARGV.join(" ")
+  results = RME::Engine.new.recall(query, limit: options[:limit])
+  if results.empty?
+    puts "No matching memories found."
+  else
+    results.each { |m| puts "[##{m.id}] [#{m.memory_type}] [importance #{m.importance}] #{m.content} (tags: #{m.tags.join(', ')})" }
+  end
+when "list"
+  OptionParser.new do |opts|
+    opts.on("--type TYPE") { |v| options[:type] = v }
+    opts.on("--limit N", Integer) { |v| options[:limit] = v }
+  end.parse!(ARGV)
+  RME::Engine.new.list(type: options[:type], limit: options[:limit]).each do |m|
+    puts "[##{m.id}] [#{m.memory_type}] [importance #{m.importance}] #{m.content}"
+  end
+when "forget"
+  id = ARGV.shift
+  abort "Usage: bundle exec ruby bin/memory forget ID" unless id
+  puts(RME::Engine.new.forget(id) ? "Memory ##{id} deleted." : "Memory ##{id} not found.")
+when "clear"
+  print "Delete ALL stored memories? Type yes to confirm: "
+  confirmation = STDIN.gets&.strip
+  if confirmation == "yes"
+    RME::Engine.new.clear
+    puts "All memories deleted."
+  else
+    puts "Cancelled."
+  end
+else
+  puts <<~HELP
+    Ruby Memory Engine
+
+    Commands:
+      bundle exec ruby bin/memory remember "text" [--type fact] [--importance 1..10] [--tags ruby,ai]
+      bundle exec ruby bin/memory recall "search words" [--limit 5]
+      bundle exec ruby bin/memory list [--type preference] [--limit 100]
+      bundle exec ruby bin/memory forget ID
+      bundle exec ruby bin/memory clear
+  HELP
+end
